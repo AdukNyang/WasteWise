@@ -47,6 +47,15 @@ wastewise/
 - View all my submitted reports
 - View a single report with full status history
 
+### Backend — Admin Dashboard (FR3, FR4)
+- View all submitted reports with submitter details and status history
+- Verify, reject or mark a report as under review
+- Group duplicate reports together
+- Detect possible duplicates by category and location
+- Assign priority level to a verified report
+- Assign report to a responsible stakeholder
+- Assignment details recorded with date and assigned by
+
 ---
 
 ## Getting Started
@@ -105,6 +114,15 @@ Server runs on `http://localhost:5000`
 | POST | /api/reports | Submit a new environmental report |
 | GET | /api/reports/my | Get all reports submitted by the logged in user |
 | GET | /api/reports/:id | Get a single report by ID with status history |
+
+### Admin
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /api/admin/reports | Get all reports (admin only) |
+| PATCH | /api/admin/reports/:id/verify | Verify, reject or mark report under review |
+| POST | /api/admin/reports/group-duplicates | Group duplicate reports |
+| GET | /api/admin/reports/duplicates | Find possible duplicates by category and location |
+| POST | /api/admin/reports/:id/assign | Assign priority and responsible stakeholder |
 
 ---
 
