@@ -38,6 +38,15 @@ wastewise/
 - Role-based access middleware (Community User, Administrator, Responsible Stakeholder)
 - EcoCoins account auto-created on registration
 
+### Backend — Report Submission (FR2)
+- Submit an environmental report with category, description and location
+- Attach a photo as evidence
+- Unique report ID generated on submission
+- Status automatically set to SUBMITTED
+- Status history recorded on every submission
+- View all my submitted reports
+- View a single report with full status history
+
 ---
 
 ## Getting Started
@@ -89,6 +98,13 @@ Server runs on `http://localhost:5000`
 |---|---|---|
 | POST | /api/auth/register | Register a new user |
 | POST | /api/auth/login | Login and receive JWT token |
+
+### Reports
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /api/reports | Submit a new environmental report |
+| GET | /api/reports/my | Get all reports submitted by the logged in user |
+| GET | /api/reports/:id | Get a single report by ID with status history |
 
 ---
 
