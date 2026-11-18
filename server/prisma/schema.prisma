@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  COMMUNITY_USER
+  ADMINISTRATOR
+  RESPONSIBLE_STAKEHOLDER
+}
+
+enum ReportStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  REOPENED
+  REJECTED
+  GROUPED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RewardType {
+  AIRTIME
+  DATA_BUNDLE
+  PARTNER_DISCOUNT
+  DIGITAL_CERTIFICATE
+  FELLOWSHIP_ACCESS
+  COMMUNITY_CHAMPION
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password      String
+  phone         String?
+  role          Role      @default(COMMUNITY_USER)
+  accountStatus String    @default("active")
+  createdAt     DateTime  @default(now())
+
+  reports       Report[]
+  ecoCoinsAccount EcoCoinsAccount?
+  badges        Badge[]
+  confirmations Confirmation[]
+}
+
+model Report {
+  id          String        @id @default(uuid())
+  category    String
+  description String
+  location    String
+  photoUrl    String?
+  status      ReportStatus  @default(SUBMITTED)
+  priority    Priority?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  submittedBy   User    @relation(fields: [userId], references: [id])
+  userId        String
+
+  assignment    Assignment?
+  statusHistory StatusHistory[]
+  confirmations Confirmation[]
+  duplicateGroup DuplicateGroup? @relation(fields: [duplicateGroupId], references: [id])
+  duplicateGroupId String?
+}
+
+model DuplicateGroup {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  reports   Report[]
+}
+
+model Assignment {
+  id                String   @id @default(uuid())
+  assignedAt        DateTime @default(now())
+  assignedTo        String
+  assignedBy        String
+  report            Report   @relation(fields: [reportId], references: [id])
+  reportId          String   @unique
+  progressUpdates   ProgressUpdate[]
+}
+
+model ProgressUpdate {
+  id           String     @id @default(uuid())
+  note         String
+  createdAt    DateTime   @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  assignmentId String
+}
+
+model StatusHistory {
+  id        String       @id @default(uuid())
+  status    ReportStatus
+  changedAt DateTime     @default(now())
+  changedBy String
+  report    Report       @relation(fields: [reportId], references: [id])
+  reportId  String
+}
+
+model Confirmation {
+  id        String   @id @default(uuid())
+  confirmed Boolean
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  report    Report   @relation(fields: [reportId], references: [id])
+  reportId  String
+}
+
+model EcoCoinsAccount {
+  id           String       @id @default(uuid())
+  balance      Int          @default(0)
+  totalEarned  Int          @default(0)
+  user         User         @relation(fields: [userId], references: [id])
+  userId       String       @unique
+  redemptions  Redemption[]
+  transactions EcoCoinsTransaction[]
+}
+
+model EcoCoinsTransaction {
+  id                String          @id @default(uuid())
+  amount            Int
+  reason            String
+  createdAt         DateTime        @default(now())
+  ecoCoinsAccount   EcoCoinsAccount @relation(fields: [ecoCoinsAccountId], references: [id])
+  ecoCoinsAccountId String
+}
+
+model Redemption {
+  id                String          @id @default(uuid())
+  rewardType        RewardType
+  coinsSpent        Int
+  redeemedAt        DateTime        @default(now())
+  ecoCoinsAccount   EcoCoinsAccount @relation(fields: [ecoCoinsAccountId], references: [id])
+  ecoCoinsAccountId String
+}
+
+model Badge {
+  id        String   @id @default(uuid())
+  name      String
+  awardedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+}
