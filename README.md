@@ -56,6 +56,14 @@ wastewise/
 - Assign report to a responsible stakeholder
 - Assignment details recorded with date and assigned by
 
+### Backend — Stakeholder and Citizen Actions (FR5, FR6)
+- Stakeholder can view their assigned reports
+- Stakeholder can add progress updates to assigned reports
+- Stakeholder can mark an issue as resolved
+- Citizen can confirm or dispute a resolution
+- Disputed issues are automatically reopened
+- Full status history maintained throughout the process
+
 ---
 
 ## Getting Started
@@ -123,6 +131,14 @@ Server runs on `http://localhost:5000`
 | POST | /api/admin/reports/group-duplicates | Group duplicate reports |
 | GET | /api/admin/reports/duplicates | Find possible duplicates by category and location |
 | POST | /api/admin/reports/:id/assign | Assign priority and responsible stakeholder |
+
+### Stakeholder and Citizen
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /api/stakeholder/assigned | Get all assigned reports (stakeholder only) |
+| POST | /api/stakeholder/reports/:id/progress | Add a progress update |
+| PATCH | /api/stakeholder/reports/:id/resolve | Mark an issue as resolved |
+| POST | /api/stakeholder/reports/:id/confirm | Confirm or dispute a resolution |
 
 ---
 
