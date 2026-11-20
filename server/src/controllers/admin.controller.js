@@ -14,6 +14,8 @@ const getAllReports = async (req, res) => {
   }
 };
 
+const VERIFIED_COINS = 50;
+
 const verifyReport = async (req, res) => {
   const { status, note } = req.body;
   const allowed = ["VERIFIED", "REJECTED", "UNDER_REVIEW"];
@@ -30,6 +32,19 @@ const verifyReport = async (req, res) => {
     await prisma.statusHistory.create({
       data: { reportId: report.id, status, changedBy: req.user.id },
     });
+
+    if (status === "VERIFIED") {
+      const account = await prisma.ecoCoinsAccount.findUnique({ where: { userId: report.userId } });
+      if (account) {
+        await prisma.ecoCoinsAccount.update({
+          where: { id: account.id },
+          data: { balance: { increment: VERIFIED_COINS }, totalEarned: { increment: VERIFIED_COINS } },
+        });
+        await prisma.ecoCoinsTransaction.create({
+          data: { ecoCoinsAccountId: account.id, amount: VERIFIED_COINS, reason: "Report verified" },
+        });
+      }
+    }
 
     res.json({ message: `Report marked as ${status}`, report });
   } catch (err) {
