@@ -27,3 +27,6 @@ Thumbs.db
 
 # Uploaded files
 server/uploads/
+
+# Chat history / session notes
+CHAT_HISTORY.md

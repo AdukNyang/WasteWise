@@ -64,6 +64,14 @@ wastewise/
 - Disputed issues are automatically reopened
 - Full status history maintained throughout the process
 
+### Backend — EcoCoins and Recognition (FR7)
+- EcoCoins account auto-created on user registration
+- EcoCoins awarded when a report is verified by admin
+- EcoCoins blocked for rejected and duplicate reports
+- View EcoCoins balance and full transaction history
+- View redemption history
+- Redeem EcoCoins for rewards (simulated)
+
 ---
 
 ## Getting Started
@@ -139,6 +147,12 @@ Server runs on `http://localhost:5000`
 | POST | /api/stakeholder/reports/:id/progress | Add a progress update |
 | PATCH | /api/stakeholder/reports/:id/resolve | Mark an issue as resolved |
 | POST | /api/stakeholder/reports/:id/confirm | Confirm or dispute a resolution |
+
+### EcoCoins
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /api/ecocoins/wallet | View balance, transactions and redemptions |
+| POST | /api/ecocoins/redeem | Redeem coins for a reward |
 
 ---
 
