@@ -1,13 +1,21 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-const { authenticate } = require("../middleware/auth.middleware");
-const { submitReport, getMyReports, getReportById } = require("../controllers/report.controller");
+const { authenticate, authorize } = require("../middleware/auth.middleware");
+const createEvidenceUpload = require("../middleware/evidence-upload.middleware");
+const {
+  acceptFollowUp,
+  getFollowUpStatus,
+  submitReport,
+  getMyReports,
+  getReportById,
+} = require("../controllers/report.controller");
 
-const upload = multer({ dest: "uploads/" });
+const uploadReportEvidence = createEvidenceUpload("photo");
 
-router.post("/", authenticate, upload.single("photo"), submitReport);
+router.post("/", authenticate, uploadReportEvidence, submitReport);
 router.get("/my", authenticate, getMyReports);
+router.get("/:id/follow-up", authenticate, getFollowUpStatus);
+router.post("/:id/follow-up/accept", authenticate, authorize("COMMUNITY_USER"), acceptFollowUp);
 router.get("/:id", authenticate, getReportById);
 
 module.exports = router;

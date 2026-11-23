@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 require("dotenv").config();
 
 const authRoutes = require("./routes/auth.routes");
@@ -7,11 +8,13 @@ const reportRoutes = require("./routes/report.routes");
 const adminRoutes = require("./routes/admin.routes");
 const stakeholderRoutes = require("./routes/stakeholder.routes");
 const ecocoinsRoutes = require("./routes/ecocoins.routes");
+const { authenticate } = require("./middleware/auth.middleware");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use("/uploads", authenticate, express.static(path.join(__dirname, "../uploads")));
 
 app.get("/", (req, res) => res.json({ message: "WasteWise API is running" }));
 
