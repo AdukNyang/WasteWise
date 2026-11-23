@@ -5,14 +5,14 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 const register = async (req, res) => {
-  const { name, email, password, phone, role } = req.body;
+  const { name, email, password, phone } = req.body;
   try {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(400).json({ message: "Email already in use" });
 
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { name, email, password: hashed, phone, role: role || "COMMUNITY_USER" },
+      data: { name, email, password: hashed, phone, role: "COMMUNITY_USER" },
     });
 
     await prisma.ecoCoinsAccount.create({ data: { userId: user.id } });

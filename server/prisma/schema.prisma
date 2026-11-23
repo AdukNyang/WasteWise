@@ -20,6 +20,7 @@ enum ReportStatus {
   ASSIGNED
   IN_PROGRESS
   RESOLVED
+  CONFIRMED
   REOPENED
   REJECTED
   GROUPED
@@ -37,61 +38,96 @@ enum RewardType {
   DATA_BUNDLE
   PARTNER_DISCOUNT
   DIGITAL_CERTIFICATE
+  LETTER_OF_RECOGNITION
   FELLOWSHIP_ACCESS
   COMMUNITY_CHAMPION
 }
 
+enum FollowUpStage {
+  ASSIGNED
+  PROGRESS_UPDATE
+  RESOLVED
+  CONFIRMED
+}
+
 model User {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   name          String
-  email         String    @unique
+  email         String   @unique
   password      String
   phone         String?
-  role          Role      @default(COMMUNITY_USER)
-  accountStatus String    @default("active")
-  createdAt     DateTime  @default(now())
+  role          Role     @default(COMMUNITY_USER)
+  accountStatus String   @default("active")
+  createdAt     DateTime @default(now())
 
-  reports       Report[]
+  reports         Report[]
   ecoCoinsAccount EcoCoinsAccount?
-  badges        Badge[]
-  confirmations Confirmation[]
+  badges          Badge[]
+  confirmations   Confirmation[]
 }
 
 model Report {
-  id          String        @id @default(uuid())
-  category    String
-  description String
-  location    String
-  photoUrl    String?
-  status      ReportStatus  @default(SUBMITTED)
-  priority    Priority?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                    String       @id @default(uuid())
+  category              String
+  description           String
+  location              String
+  latitude              Float?
+  longitude             Float?
+  photoUrl              String?
+  resolutionEvidenceUrl String?
+  resolutionLocation    String?
+  status                ReportStatus @default(SUBMITTED)
+  priority              Priority?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  submittedBy   User    @relation(fields: [userId], references: [id])
-  userId        String
+  submittedBy User   @relation(fields: [userId], references: [id])
+  userId      String
 
-  assignment    Assignment?
-  statusHistory StatusHistory[]
-  confirmations Confirmation[]
-  duplicateGroup DuplicateGroup? @relation(fields: [duplicateGroupId], references: [id])
+  assignment       Assignment?
+  statusHistory    StatusHistory[]
+  confirmations    Confirmation[]
+  duplicateGroup   DuplicateGroup? @relation(fields: [duplicateGroupId], references: [id])
   duplicateGroupId String?
+  followUpAnchor   FollowUpCase?   @relation("FollowUpAnchor")
+  followUpOwner    FollowUpCase?   @relation("FollowUpOwner")
+}
+
+model FollowUpCase {
+  id             String              @id @default(uuid())
+  startedAt      DateTime            @default(now())
+  acceptedAt     DateTime?
+  anchorReportId String              @unique
+  anchorReport   Report              @relation("FollowUpAnchor", fields: [anchorReportId], references: [id])
+  ownerReportId  String?             @unique
+  ownerReport    Report?             @relation("FollowUpOwner", fields: [ownerReportId], references: [id])
+  milestones     FollowUpMilestone[]
+}
+
+model FollowUpMilestone {
+  id             String        @id @default(uuid())
+  stage          FollowUpStage
+  reachedAt      DateTime      @default(now())
+  followUpCase   FollowUpCase  @relation(fields: [followUpCaseId], references: [id])
+  followUpCaseId String
+
+  @@unique([followUpCaseId, stage])
 }
 
 model DuplicateGroup {
-  id        String    @id @default(uuid())
-  createdAt DateTime  @default(now())
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
   reports   Report[]
 }
 
 model Assignment {
-  id                String   @id @default(uuid())
-  assignedAt        DateTime @default(now())
-  assignedTo        String
-  assignedBy        String
-  report            Report   @relation(fields: [reportId], references: [id])
-  reportId          String   @unique
-  progressUpdates   ProgressUpdate[]
+  id              String           @id @default(uuid())
+  assignedAt      DateTime         @default(now())
+  assignedTo      String
+  assignedBy      String
+  report          Report           @relation(fields: [reportId], references: [id])
+  reportId        String           @unique
+  progressUpdates ProgressUpdate[]
 }
 
 model ProgressUpdate {
@@ -122,11 +158,11 @@ model Confirmation {
 }
 
 model EcoCoinsAccount {
-  id           String       @id @default(uuid())
-  balance      Int          @default(0)
-  totalEarned  Int          @default(0)
-  user         User         @relation(fields: [userId], references: [id])
-  userId       String       @unique
+  id           String                @id @default(uuid())
+  balance      Int                   @default(0)
+  totalEarned  Int                   @default(0)
+  user         User                  @relation(fields: [userId], references: [id])
+  userId       String                @unique
   redemptions  Redemption[]
   transactions EcoCoinsTransaction[]
 }
@@ -138,6 +174,12 @@ model EcoCoinsTransaction {
   createdAt         DateTime        @default(now())
   ecoCoinsAccount   EcoCoinsAccount @relation(fields: [ecoCoinsAccountId], references: [id])
   ecoCoinsAccountId String
+  rewardKey         String?
+}
+
+model EcoCoinsAward {
+  key       String   @id
+  createdAt DateTime @default(now())
 }
 
 model Redemption {

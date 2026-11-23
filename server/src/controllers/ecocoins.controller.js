@@ -3,12 +3,13 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 const COIN_COSTS = {
-  AIRTIME: 100,
-  DATA_BUNDLE: 150,
-  PARTNER_DISCOUNT: 80,
-  DIGITAL_CERTIFICATE: 50,
-  FELLOWSHIP_ACCESS: 200,
-  COMMUNITY_CHAMPION: 300,
+  DIGITAL_CERTIFICATE: 1000,
+  LETTER_OF_RECOGNITION: 2000,
+  DATA_BUNDLE: 2000,
+  PARTNER_DISCOUNT: 1500,
+  AIRTIME: 3000,
+  FELLOWSHIP_ACCESS: 5000,
+  COMMUNITY_CHAMPION: 10000,
 };
 
 const getWallet = async (req, res) => {
