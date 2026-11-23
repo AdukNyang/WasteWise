@@ -3,8 +3,8 @@ node_modules/
 
 # Environment variables
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # Prisma generated client
 server/generated/
@@ -13,10 +13,18 @@ client/generated/
 # React build output
 client/dist/
 client/build/
+client/dist-ssr/
+
+# Unused client starter assets
+client/public/favicon.svg
+client/public/icons.svg
 
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # OS files
 .DS_Store
@@ -28,5 +36,5 @@ Thumbs.db
 # Uploaded files
 server/uploads/
 
-# Chat history / session notes
-CHAT_HISTORY.md
+# Testing data (such as stakeholder tokens, report IDs)
+Test_HISTORY.md
