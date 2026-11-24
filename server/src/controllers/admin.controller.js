@@ -1,8 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
+const { sendPushNotification } = require("../services/push-notification.service");
 const {
   awardReportingCoins,
   ensureFollowUpCase,
   getRankedReports,
+  rankReports,
   recordFollowUpMilestone,
   TRANSACTION_OPTIONS,
 } = require("../services/ecocoins.service");
@@ -12,10 +14,17 @@ const prisma = new PrismaClient();
 const getAllReports = async (req, res) => {
   try {
     const reports = await prisma.report.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: { submittedBy: { select: { id: true, name: true, email: true } }, statusHistory: true },
     });
-    res.json(reports);
+    const rankByReportId = new Map(rankReports(reports).map(({ id, reporterRank, appreciationEligible }) => [
+      id,
+      { reporterRank, appreciationEligible },
+    ]));
+    res.json(reports.map((report) => ({
+      ...report,
+      ...rankByReportId.get(report.id),
+    })));
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -128,11 +137,34 @@ const assignReport = async (req, res) => {
       });
 
       const coinsAwarded = await recordFollowUpMilestone(tx, report.id, "ASSIGNED");
-      return { report, coinsAwarded };
+      const notification = await tx.notification.create({
+        data: {
+          type: "REPORT_ASSIGNED",
+          title: "Your report was assigned",
+          message: `Your ${report.category} report at ${report.location} has been assigned to a responsible stakeholder.`,
+          userId: report.userId,
+          reportId: report.id,
+        },
+      });
+      return { report, coinsAwarded, notification };
     }, TRANSACTION_OPTIONS);
 
     if (!result) return res.status(404).json({ message: "Report not found" });
     if (result.invalidStatus) return res.status(400).json({ message: "Only verified reports can be assigned" });
+
+    try {
+      await sendPushNotification(result.notification.userId, {
+        title: result.notification.title,
+        body: result.notification.message,
+        url: "/?page=reports",
+        tag: `report-assigned-${result.report.id}`,
+      });
+    } catch (pushError) {
+      console.error("Could not send browser push for report assignment", {
+        reportId: result.report.id,
+        message: pushError.message,
+      });
+    }
 
     res.json({ message: "Report assigned successfully", report: result.report, coinsAwarded: result.coinsAwarded });
   } catch (err) {

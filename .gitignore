@@ -18,6 +18,12 @@ client/dist-ssr/
 # Unused client starter assets
 client/public/favicon.svg
 client/public/icons.svg
+client/src/assets/hero.png
+client/src/assets/react.svg
+client/src/assets/vite.svg
+
+# Empty client placeholder
+client/README.md
 
 # Logs
 *.log

@@ -16,4 +16,48 @@ const parseGpsCoordinates = (latitudeValue, longitudeValue) => {
   return { latitude, longitude };
 };
 
-module.exports = { parseGpsCoordinates };
+const parseGpsAccuracy = (accuracyValue, hasCoordinates) => {
+  const provided = accuracyValue !== undefined && accuracyValue !== null && String(accuracyValue).trim() !== "";
+  if (!provided) return { accuracyMeters: null };
+  if (!hasCoordinates) return { error: "GPS accuracy requires GPS coordinates" };
+
+  const accuracyMeters = Number(accuracyValue);
+  if (!Number.isFinite(accuracyMeters) || accuracyMeters < 0 || accuracyMeters > 100000)
+    return { error: "GPS accuracy must be between 0 and 100000 meters" };
+
+  return { accuracyMeters };
+};
+
+const calculateDistanceMeters = (first, second) => {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const latitudeDifference = radians(second.latitude - first.latitude);
+  const longitudeDifference = radians(second.longitude - first.longitude);
+  const firstLatitude = radians(first.latitude);
+  const secondLatitude = radians(second.latitude);
+  const haversine = Math.sin(latitudeDifference / 2) ** 2
+    + Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDifference / 2) ** 2;
+  const boundedHaversine = Math.min(1, Math.max(0, haversine));
+  return 6371000 * 2 * Math.atan2(Math.sqrt(boundedHaversine), Math.sqrt(1 - boundedHaversine));
+};
+
+const getResolutionGpsCheck = (report, stakeholder) => {
+  if (report.latitude == null || report.longitude == null)
+    return { verified: false, withinLimit: true, distanceMeters: null };
+
+  const distanceMeters = calculateDistanceMeters(
+    { latitude: report.latitude, longitude: report.longitude },
+    stakeholder,
+  );
+  return {
+    verified: true,
+    withinLimit: distanceMeters <= 50,
+    distanceMeters,
+  };
+};
+
+module.exports = {
+  calculateDistanceMeters,
+  getResolutionGpsCheck,
+  parseGpsAccuracy,
+  parseGpsCoordinates,
+};

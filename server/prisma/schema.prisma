@@ -60,26 +60,33 @@ model User {
   accountStatus String   @default("active")
   createdAt     DateTime @default(now())
 
-  reports         Report[]
-  ecoCoinsAccount EcoCoinsAccount?
-  badges          Badge[]
-  confirmations   Confirmation[]
+  reports           Report[]
+  ecoCoinsAccount   EcoCoinsAccount?
+  badges            Badge[]
+  confirmations     Confirmation[]
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
 }
 
 model Report {
-  id                    String       @id @default(uuid())
-  category              String
-  description           String
-  location              String
-  latitude              Float?
-  longitude             Float?
-  photoUrl              String?
-  resolutionEvidenceUrl String?
-  resolutionLocation    String?
-  status                ReportStatus @default(SUBMITTED)
-  priority              Priority?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
+  id                               String       @id @default(uuid())
+  category                         String
+  description                      String
+  location                         String
+  latitude                         Float?
+  longitude                        Float?
+  locationAccuracyMeters           Float?
+  photoUrl                         String?
+  resolutionEvidenceUrl            String?
+  resolutionLocation               String?
+  resolutionLatitude               Float?
+  resolutionLongitude              Float?
+  resolutionLocationAccuracyMeters Float?
+  resolutionDistanceMeters         Float?
+  status                           ReportStatus @default(SUBMITTED)
+  priority                         Priority?
+  createdAt                        DateTime     @default(now())
+  updatedAt                        DateTime     @updatedAt
 
   submittedBy User   @relation(fields: [userId], references: [id])
   userId      String
@@ -87,6 +94,7 @@ model Report {
   assignment       Assignment?
   statusHistory    StatusHistory[]
   confirmations    Confirmation[]
+  notifications    Notification[]
   duplicateGroup   DuplicateGroup? @relation(fields: [duplicateGroupId], references: [id])
   duplicateGroupId String?
   followUpAnchor   FollowUpCase?   @relation("FollowUpAnchor")
@@ -197,4 +205,33 @@ model Badge {
   awardedAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
   userId    String
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  type      String
+  title     String
+  message   String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  report    Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  reportId  String?
+
+  @@index([userId, createdAt])
+  @@index([reportId])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@index([userId])
 }

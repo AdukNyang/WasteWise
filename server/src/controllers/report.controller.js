@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const fs = require("fs");
 const {
   getEligibleReporterRank,
   getFollowUpCase,
@@ -7,14 +8,42 @@ const {
   TRANSACTION_OPTIONS,
 } = require("../services/ecocoins.service");
 const { canAccessReport } = require("../services/report-access.service");
-const { parseGpsCoordinates } = require("../services/report-location.service");
+const { parseGpsAccuracy, parseGpsCoordinates } = require("../services/report-location.service");
+const { validateReport } = require("../services/report-validation.service");
 
 const prisma = new PrismaClient();
 
 const submitReport = async (req, res) => {
-  const { category, description, location } = req.body;
-  const coordinates = parseGpsCoordinates(req.body.latitude, req.body.longitude);
-  if (coordinates.error) return res.status(400).json({ message: coordinates.error });
+  const body = req.body || {};
+  const { category } = body;
+  const description = typeof body.description === "string" ? body.description.trim() : body.description;
+  const location = typeof body.location === "string" ? body.location.trim() : body.location;
+  const validationError = validateReport({ ...body, description, location }, Boolean(req.file));
+  const coordinates = parseGpsCoordinates(body.latitude, body.longitude);
+  const accuracy = parseGpsAccuracy(
+    body.locationAccuracyMeters,
+    coordinates.latitude != null && coordinates.longitude != null,
+  );
+  const discardEvidence = () => {
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error("Could not remove invalid report evidence:", err.message);
+      });
+    }
+  };
+
+  if (validationError) {
+    discardEvidence();
+    return res.status(400).json({ message: validationError });
+  }
+  if (coordinates.error) {
+    discardEvidence();
+    return res.status(400).json({ message: coordinates.error });
+  }
+  if (accuracy.error) {
+    discardEvidence();
+    return res.status(400).json({ message: accuracy.error });
+  }
   const photoUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
@@ -25,6 +54,7 @@ const submitReport = async (req, res) => {
         location,
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
+        locationAccuracyMeters: accuracy.accuracyMeters,
         photoUrl,
         userId: req.user.id,
       },
@@ -40,6 +70,7 @@ const submitReport = async (req, res) => {
 
     res.status(201).json({ message: "Report submitted successfully", report });
   } catch (err) {
+    discardEvidence();
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
@@ -52,20 +83,18 @@ const getMyReports = async (req, res) => {
     });
     if (!reports.length) return res.json([]);
 
-    const groups = new Map();
-    for (const report of reports) {
-      groups.set(JSON.stringify([report.category, report.location]), {
-        category: report.category,
-        location: report.location,
-      });
-    }
-
+    const categories = [...new Set(reports.map((report) => report.category))];
     const peers = await prisma.report.findMany({
-      where: {
-        OR: [...groups.values()],
-      },
+      where: { category: { in: categories } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, category: true, location: true },
+      select: {
+        id: true,
+        userId: true,
+        category: true,
+        location: true,
+        latitude: true,
+        longitude: true,
+      },
     });
     const rankedReports = rankReports(peers);
     const rankByReportId = new Map(rankedReports.map(({ id, reporterRank, appreciationEligible }) => [
