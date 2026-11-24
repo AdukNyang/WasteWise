@@ -1,6 +1,6 @@
 const multer = require("multer");
-const path = require("path");
 const fs = require("fs");
+const { getUploadDirectory } = require("../services/upload-storage.service");
 
 const MAX_EVIDENCE_SIZE = 25 * 1024 * 1024;
 
@@ -38,8 +38,14 @@ const matchesFileSignature = (header, mimetype) => {
 
 const createEvidenceUpload = (fieldName) => {
   const upload = multer({
-    dest: path.join(__dirname, "../../uploads"),
-    limits: { fileSize: MAX_EVIDENCE_SIZE, files: 1 },
+    dest: getUploadDirectory(),
+    limits: {
+      fileSize: MAX_EVIDENCE_SIZE,
+      files: 1,
+      fields: 10,
+      fieldSize: 64 * 1024,
+      parts: 12,
+    },
     fileFilter: (req, file, callback) => {
       if (!isAllowedEvidence(file))
         return callback(new Error("File must be a supported photo or video"));

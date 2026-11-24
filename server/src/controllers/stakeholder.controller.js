@@ -1,6 +1,12 @@
 const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
 const { recordFollowUpMilestone, TRANSACTION_OPTIONS } = require("../services/ecocoins.service");
+const { validateProgressNote, validateResolutionLocation } = require("../services/report-validation.service");
+const {
+  getResolutionGpsCheck,
+  parseGpsAccuracy,
+  parseGpsCoordinates,
+} = require("../services/report-location.service");
 
 const prisma = new PrismaClient();
 
@@ -20,7 +26,11 @@ const getAssignedReports = async (req, res) => {
 };
 
 const addProgressUpdate = async (req, res) => {
-  const { note } = req.body;
+  const body = req.body || {};
+  const note = typeof body.note === "string" ? body.note.trim() : body.note;
+  const validationError = validateProgressNote(note);
+  if (validationError) return res.status(400).json({ message: validationError });
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const assignment = await tx.assignment.findUnique({ where: { reportId: req.params.id } });
@@ -67,8 +77,9 @@ const addProgressUpdate = async (req, res) => {
 };
 
 const markResolved = async (req, res) => {
-  const resolutionLocation = typeof req.body.resolutionLocation === "string"
-    ? req.body.resolutionLocation.trim()
+  const body = req.body || {};
+  const resolutionLocation = typeof body.resolutionLocation === "string"
+    ? body.resolutionLocation.trim()
     : "";
   const evidence = req.file;
   const discardEvidence = () => {
@@ -80,9 +91,24 @@ const markResolved = async (req, res) => {
   };
 
   if (!evidence) return res.status(400).json({ message: "A resolution photo or video is required" });
-  if (!resolutionLocation) {
+  const validationError = validateResolutionLocation(resolutionLocation);
+  if (validationError) {
     discardEvidence();
-    return res.status(400).json({ message: "Resolution location is required" });
+    return res.status(400).json({ message: validationError });
+  }
+  const coordinates = parseGpsCoordinates(body.resolutionLatitude, body.resolutionLongitude);
+  if (coordinates.error) {
+    discardEvidence();
+    return res.status(400).json({ message: coordinates.error });
+  }
+  if (coordinates.latitude === null) {
+    discardEvidence();
+    return res.status(400).json({ message: "Capture your current GPS location before resolving the report" });
+  }
+  const accuracy = parseGpsAccuracy(body.resolutionLocationAccuracyMeters, true);
+  if (accuracy.error) {
+    discardEvidence();
+    return res.status(400).json({ message: accuracy.error });
   }
   if (!evidence.mimetype.startsWith("image/") && !evidence.mimetype.startsWith("video/")) {
     discardEvidence();
@@ -102,12 +128,20 @@ const markResolved = async (req, res) => {
       const update = await tx.progressUpdate.findFirst({ where: { assignmentId: assignment.id } });
       if (!update) return { progressRequired: true };
 
+      const gpsCheck = getResolutionGpsCheck(report, coordinates);
+      if (!gpsCheck.withinLimit)
+        return { outsideFence: true, resolutionDistanceMeters: gpsCheck.distanceMeters };
+
       const resolved = await tx.report.update({
         where: { id: report.id },
         data: {
           status: "RESOLVED",
           resolutionEvidenceUrl: `/uploads/${evidence.filename}`,
           resolutionLocation,
+          resolutionLatitude: coordinates.latitude,
+          resolutionLongitude: coordinates.longitude,
+          resolutionLocationAccuracyMeters: accuracy.accuracyMeters,
+          resolutionDistanceMeters: gpsCheck.distanceMeters,
         },
       });
 
@@ -138,6 +172,12 @@ const markResolved = async (req, res) => {
     if (result.progressRequired) {
       discardEvidence();
       return res.status(400).json({ message: "Add a progress update before resolving the report" });
+    }
+    if (result.outsideFence) {
+      discardEvidence();
+      return res.status(400).json({
+        message: `Your GPS is approximately ${Math.ceil(result.resolutionDistanceMeters)} metres from the reported location. Move within 50 metres to resolve this report.`,
+      });
     }
 
     res.json({

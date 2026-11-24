@@ -9,6 +9,12 @@ test("valid registration data passes validation", () => {
     password: "Secure123",
     phone: "+256 700 123 456",
   }), null);
+  assert.equal(validateRegistration({
+    name: "Aduk Nyang",
+    email: "aduk@example.com",
+    password: "Secure123",
+    phone: "   ",
+  }), null);
 });
 
 test("registration rejects missing or invalid required fields", () => {

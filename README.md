@@ -40,20 +40,23 @@ wastewise/
 ### Frontend — Community Reporting (FR2)
 - Submit reports with plain-language categories, a description, and a written location
 - Optionally use browser GPS when unsure of the location; GPS requires permission and works on `localhost` or HTTPS
-- GPS coordinates are stored separately and shown to the report owner, admin, and assigned stakeholder
-- Attach a photo or video as report evidence
+- Reporter GPS coordinates are stored separately and shown to the report owner, admin, and assigned stakeholder. Stakeholder resolution GPS, estimated accuracy, and the calculated distance are also saved and shown to the reporter and admin.
+- Browser GPS is approximate and can be spoofed, so the distance check supports review but does not prove physical presence.
+- Include a photo or video as required report evidence
 - View report status and progress, accept follow-up when eligible, and confirm or dispute a resolution
-- No external geocoding or map service receives coordinates; a private map background is not configured yet
+- GPS coordinates are shown on an admin map with report markers. OpenStreetMap provides map tiles and receives the browser IP and map area requested, but not report descriptions or account data.
 
 ### Frontend — Administrator (FR3, FR4)
 - Review reports and verify, reject, or mark them as under review
 - Find and group duplicate reports
 - Set report priority and assign reports to responsible stakeholders
-- View report locations and GPS coordinates
+- View GPS-enabled reports on a map with a marker for each issue
+- OpenStreetMap provides map tiles and receives the browser IP and requested map area, but not report descriptions or account data
 
 ### Frontend — Stakeholder and Citizen Actions (FR5, FR6)
 - Stakeholders can view assigned reports and add progress updates
-- Submit a resolution location and photo or video evidence
+- Describe where the work was completed, capture current GPS, and submit photo or video evidence
+- If a report has GPS, resolution is accepted only when the stakeholder GPS is within 50 metres. If the report has no GPS, the stakeholder position is saved but the distance check is marked unverified.
 - Citizens can confirm a resolution or dispute it
 
 ### Frontend — EcoCoins and Recognition (FR7)
@@ -69,7 +72,7 @@ wastewise/
 
 ### Backend — Report Submission (FR2)
 - Submit an environmental report with category, description and location
-- Attach a photo or video as evidence
+- Require a photo or video as report evidence
 - Unique report ID generated on submission
 - Status automatically set to SUBMITTED
 - Status history recorded on every submission
@@ -132,7 +135,14 @@ Copy `server/.env.example` to `server/.env` and fill in your local values:
 DATABASE_URL="your-neon-postgresql-connection-string"
 JWT_SECRET="your-secret-key"
 PORT=5000
+FRONTEND_URL="http://localhost:5173"
+UPLOAD_DIR="./uploads"
+VAPID_SUBJECT="mailto:notifications@example.com"
+VAPID_PUBLIC_KEY=""
+VAPID_PRIVATE_KEY=""
 ```
+
+Browser push is optional. Generate a VAPID key pair with `npx web-push generate-vapid-keys`, then configure the public and private keys as server environment variables. Keep the private key secret. Browser push requires HTTPS in production; in-app notifications work without VAPID keys.
 
 ### 4. Set up the database
 ```bash
@@ -167,6 +177,10 @@ VITE_API_URL="http://localhost:5000"
 ### 8. Prepare administrator and stakeholder accounts
 Community users can register in the app. Administrator and stakeholder accounts must already exist in the backend before they can sign in.
 
+## Persistent evidence storage
+
+Evidence uploads use `server/uploads` locally by default. For Render, attach a persistent disk mounted at `/var/data` and set `UPLOAD_DIR=/var/data/uploads` in the server environment. Files are only persistent across deploys when the host's persistent disk is mounted and the upload directory points to it.
+
 ---
 
 ## API Endpoints
@@ -180,7 +194,7 @@ Community users can register in the app. Administrator and stakeholder accounts 
 ### Reports
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | /api/reports | Submit a report with optional photo and GPS coordinates |
+| POST | /api/reports | Submit a report with required photo/video evidence and optional GPS coordinates |
 | GET | /api/reports/my | Get all reports submitted by the logged in user |
 | GET | /api/reports/:id | Get a single report by ID with status history |
 | GET | /api/reports/:id/follow-up | Check the follow-up acceptance window |
@@ -201,7 +215,7 @@ Community users can register in the app. Administrator and stakeholder accounts 
 |---|---|---|
 | GET | /api/stakeholder/assigned | Get all assigned reports (stakeholder only) |
 | POST | /api/stakeholder/reports/:id/progress | Add a progress update |
-| PATCH | /api/stakeholder/reports/:id/resolve | Mark an issue resolved with `resolutionLocation` and `evidence` photo/video fields |
+| PATCH | /api/stakeholder/reports/:id/resolve | Resolve with `resolutionLocation`, `resolutionLatitude`, `resolutionLongitude`, optional `resolutionLocationAccuracyMeters`, and `evidence` photo/video fields. GPS must be within 50 metres of report GPS when available. |
 | POST | /api/stakeholder/reports/:id/confirm | Confirm or dispute a resolution |
 
 ### EcoCoins
@@ -209,6 +223,18 @@ Community users can register in the app. Administrator and stakeholder accounts 
 |---|---|---|
 | GET | /api/ecocoins/wallet | View balance, transactions and redemptions |
 | POST | /api/ecocoins/redeem | Redeem coins for a reward |
+
+### Notifications (community accounts)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /api/notifications | List notifications and unread count |
+| GET | /api/notifications/push-config | Get browser push availability and public key |
+| POST | /api/notifications/subscriptions | Enable browser push for this device |
+| DELETE | /api/notifications/subscriptions | Disable browser push for this device |
+| PATCH | /api/notifications/:id/read | Mark one notification as read |
+| PATCH | /api/notifications/read-all | Mark all notifications as read |
+
+Report assignment creates an in-app notification for its reporter. Redeemed digital certificates can be opened from EcoCoins redemption history and printed or saved as PDF.
 
 ### EcoCoins earning
 
@@ -219,6 +245,8 @@ Community users can register in the app. Administrator and stakeholder accounts 
 | 3rd | 300 | 1,334 | 1,634 |
 | 4th–10th | 10 | 0 | 10 |
 | 11th+ | 0 | 0 | 0 |
+
+Reporter rank is based on category and location. GPS reports within 50 metres are treated as the same location; manually entered locations are compared after trimming and normalizing spaces and letter case. Each person is counted once for the same issue, so repeat reports do not advance their rank or earn the reporting reward again.
 
 Only one of the first three reporters can accept follow-up. The first reporter has one week after verification, the second has the following week, and the third becomes eligible after two weeks. Follow-up coins are paid milestone by milestone, only for milestones reached after acceptance; missed earlier milestones are not paid retroactively.
 

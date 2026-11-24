@@ -24,9 +24,10 @@ const createClient = ({ reports, followUpCase }) => {
       findUnique: async ({ where }) => reports.find((report) => report.id === where.id) || null,
       findMany: async ({ where }) =>
         reports
-          .filter((report) => report.category === where.category && report.location === where.location)
+          .filter((report) => report.category === where.category
+            && (where.location === undefined || report.location === where.location))
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
-          .map(({ id, userId }) => ({ id, userId })),
+          .map((report) => ({ ...report })),
     },
     followUpCase: {
       findUnique: async () => followUpCase,
@@ -75,18 +76,65 @@ test("follow-up windows advance every week", () => {
   assert.equal(getEligibleReporterRank(start, new Date("2026-01-15T00:00:00.000Z")), 3);
 });
 
-test("report ranks are calculated per exact category and location", () => {
+test("manual report ranks normalize location text and count each reporter once", () => {
   const ranked = rankReports([
-    { id: "report-1", category: "Dumping", location: "Nakawa" },
-    { id: "report-2", category: "Dumping", location: "Nakawa" },
-    { id: "report-3", category: "Blocked Drain", location: "Nakawa" },
-    { id: "report-4", category: "Dumping", location: "Nakawa" },
-    { id: "report-5", category: "Dumping", location: "Nakawa" },
+    { id: "report-1", userId: "user-1", category: "Dumping", location: "Nakawa Road" },
+    { id: "report-2", userId: "user-1", category: "Dumping", location: "  nakawa   road " },
+    { id: "report-3", userId: "user-2", category: "Dumping", location: "NAKAWA ROAD" },
+    { id: "report-4", userId: "user-3", category: "Blocked Drain", location: "Nakawa Road" },
+    { id: "report-5", userId: "user-4", category: "Dumping", location: "Nakawa Road" },
+    { id: "report-6", userId: "user-5", category: "Dumping", location: "Nakawa Road" },
   ]);
 
-  assert.deepEqual(ranked.map(({ reporterRank }) => reporterRank), [1, 2, 1, 3, 4]);
-  assert.equal(ranked[3].appreciationEligible, false);
-  assert.equal(ranked[4].appreciationEligible, true);
+  assert.deepEqual(ranked.map(({ reporterRank }) => reporterRank), [1, 1, 2, 1, 3, 4]);
+  assert.equal(ranked[4].appreciationEligible, false);
+  assert.equal(ranked[5].appreciationEligible, true);
+});
+
+test("GPS reports within 50 metres share a rank group", () => {
+  const ranked = rankReports([
+    { id: "report-1", userId: "user-1", category: "Dumping", location: "GPS 1", latitude: 0.3476, longitude: 32.58 },
+    { id: "report-2", userId: "user-1", category: "Dumping", location: "GPS 2", latitude: 0.34765, longitude: 32.58 },
+    { id: "report-3", userId: "user-2", category: "Dumping", location: "GPS 3", latitude: 0.3477, longitude: 32.58 },
+    { id: "report-4", userId: "user-3", category: "Dumping", location: "GPS 4", latitude: 0.3482, longitude: 32.58 },
+  ]);
+
+  assert.deepEqual(ranked.map(({ reporterRank }) => reporterRank), [1, 1, 2, 1]);
+  assert.equal(ranked[0].reportGroupId, ranked[2].reportGroupId);
+  assert.notEqual(ranked[0].reportGroupId, ranked[3].reportGroupId);
+});
+
+test("GPS rank lookup returns distinct reporters for the matching location group", async () => {
+  const gpsReports = [
+    { id: "report-1", userId: "user-1", category: "Dumping", location: "GPS 1", latitude: 0.3476, longitude: 32.58, createdAt: "2026-01-01T00:00:00.000Z" },
+    { id: "report-2", userId: "user-1", category: "Dumping", location: "GPS 2", latitude: 0.34765, longitude: 32.58, createdAt: "2026-01-02T00:00:00.000Z" },
+    { id: "report-3", userId: "user-2", category: "Dumping", location: "GPS 3", latitude: 0.3477, longitude: 32.58, createdAt: "2026-01-03T00:00:00.000Z" },
+    { id: "report-4", userId: "user-3", category: "Dumping", location: "GPS 4", latitude: 0.3482, longitude: 32.58, createdAt: "2026-01-04T00:00:00.000Z" },
+  ];
+  const client = createClient({ reports: gpsReports, followUpCase: null });
+  const ranked = await getRankedReports(client, "report-3");
+
+  assert.equal(ranked.rank, 2);
+  assert.equal(ranked.anchorReportId, "report-1");
+  assert.deepEqual(ranked.reports, [
+    { id: "report-1", userId: "user-1" },
+    { id: "report-3", userId: "user-2" },
+  ]);
+  assert.deepEqual(ranked.reportIds, ["report-1", "report-2", "report-3"]);
+});
+
+test("repeat reports from the same person cannot earn reporting coins twice for one location", async () => {
+  const repeatedReports = [
+    { id: "report-1", userId: "user-1", category: "Dumping", location: "GPS 1", latitude: 0.3476, longitude: 32.58, createdAt: "2026-01-01T00:00:00.000Z" },
+    { id: "report-2", userId: "user-1", category: "Dumping", location: "GPS 2", latitude: 0.34765, longitude: 32.58, createdAt: "2026-01-02T00:00:00.000Z" },
+  ];
+  const client = createClient({ reports: repeatedReports, followUpCase: null });
+  const firstAward = await awardReportingCoins(client, await getRankedReports(client, "report-1"));
+  const repeatAward = await awardReportingCoins(client, await getRankedReports(client, "report-2"));
+
+  assert.equal(firstAward.coinsAwarded, 1000);
+  assert.equal(repeatAward.coinsAwarded, 0);
+  assert.equal(client.accounts.get("user-1").balance, 1000);
 });
 
 test("milestone rewards use the accepting reporter's rank and are paid once", async () => {

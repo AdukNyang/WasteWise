@@ -8,14 +8,63 @@ const FOLLOW_UP_COINS = {
 };
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const TRANSACTION_OPTIONS = { maxWait: 10000, timeout: 30000 };
+const GPS_MATCH_RADIUS_METERS = 50;
+
+const hasGpsCoordinates = (report) =>
+  Number.isFinite(report.latitude) && Number.isFinite(report.longitude);
+
+const normalizeTextLocation = (location) =>
+  typeof location === "string" ? location.trim().replace(/\s+/g, " ").toLowerCase() : "";
+
+const distanceBetweenReports = (first, second) => {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const latitudeDifference = radians(second.latitude - first.latitude);
+  const longitudeDifference = radians(second.longitude - first.longitude);
+  const firstLatitude = radians(first.latitude);
+  const secondLatitude = radians(second.latitude);
+  const haversine = Math.sin(latitudeDifference / 2) ** 2
+    + Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDifference / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
+
+const reportsShareLocation = (first, second) => {
+  const firstHasGps = hasGpsCoordinates(first);
+  const secondHasGps = hasGpsCoordinates(second);
+  if (firstHasGps || secondHasGps)
+    return firstHasGps && secondHasGps
+      && distanceBetweenReports(first, second) <= GPS_MATCH_RADIUS_METERS;
+  return normalizeTextLocation(first.location) === normalizeTextLocation(second.location);
+};
+
+const getReporterKey = (report) => report.userId ?? report.id;
 
 const rankReports = (reports) => {
-  const ranks = new Map();
+  const groups = [];
   return reports.map((report) => {
-    const groupKey = JSON.stringify([report.category, report.location]);
-    const reporterRank = (ranks.get(groupKey) || 0) + 1;
-    ranks.set(groupKey, reporterRank);
-    return { ...report, reporterRank, appreciationEligible: reporterRank >= 4 };
+    let group = groups.find((candidate) =>
+      candidate.category === report.category
+      && reportsShareLocation(candidate.anchor, report));
+    if (!group) {
+      group = {
+        anchor: report,
+        category: report.category,
+        reporterRanks: new Map(),
+      };
+      groups.push(group);
+    }
+
+    const reporterKey = getReporterKey(report);
+    let reporterRank = group.reporterRanks.get(reporterKey);
+    if (reporterRank === undefined) {
+      reporterRank = group.reporterRanks.size + 1;
+      group.reporterRanks.set(reporterKey, reporterRank);
+    }
+    return {
+      ...report,
+      reporterRank,
+      appreciationEligible: reporterRank >= 4,
+      reportGroupId: group.anchor.id,
+    };
   });
 };
 
@@ -24,23 +73,43 @@ const getRankedReports = async (client, reportId) => {
   if (!report) return null;
 
   const reports = await client.report.findMany({
-    where: { category: report.category, location: report.location },
+    where: { category: report.category },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      category: true,
+      location: true,
+      latitude: true,
+      longitude: true,
+    },
   });
+  const rankedReports = rankReports(reports);
+  const rankedReport = rankedReports.find((item) => item.id === reportId);
+  if (!rankedReport) return null;
+
+  const groupReports = rankedReports.filter((item) => item.reportGroupId === rankedReport.reportGroupId);
+  const reporters = new Map();
+  for (const item of groupReports) {
+    const reporterKey = getReporterKey(item);
+    if (!reporters.has(reporterKey))
+      reporters.set(reporterKey, { id: item.id, userId: item.userId });
+  }
 
   return {
     report,
-    reports,
-    rank: reports.findIndex((item) => item.id === reportId) + 1,
+    reports: [...reporters.values()],
+    reportIds: groupReports.map((item) => item.id),
+    anchorReportId: rankedReport.reportGroupId,
+    rank: rankedReport.reporterRank,
   };
 };
 
 const ensureFollowUpCase = async (client, ranked, startedAt) => {
   return client.followUpCase.upsert({
-    where: { anchorReportId: ranked.reports[0].id },
+    where: { anchorReportId: ranked.anchorReportId },
     update: {},
-    create: { anchorReportId: ranked.reports[0].id, startedAt },
+    create: { anchorReportId: ranked.anchorReportId, startedAt },
   });
 };
 
@@ -49,13 +118,13 @@ const getFollowUpCase = async (client, reportId) => {
   if (!ranked) return null;
 
   let followUpCase = await client.followUpCase.findUnique({
-    where: { anchorReportId: ranked.reports[0].id },
+    where: { anchorReportId: ranked.anchorReportId },
   });
 
   if (!followUpCase) {
     const verification = await client.statusHistory.findFirst({
       where: {
-        reportId: { in: ranked.reports.map((report) => report.id) },
+        reportId: { in: ranked.reportIds },
         status: "VERIFIED",
       },
       orderBy: { changedAt: "asc" },
@@ -107,7 +176,7 @@ const awardReportingCoins = async (client, ranked) => {
     userId: ranked.report.userId,
     amount: coins,
     reason: `Report verified (rank ${ranked.rank})`,
-    rewardKey: `reporting:${ranked.report.id}`,
+    rewardKey: `reporting:${ranked.anchorReportId}:${ranked.report.userId}`,
   });
 
   return {
@@ -122,7 +191,7 @@ const recordFollowUpMilestone = async (client, reportId, stage, reachedAt = new 
   if (!ranked) throw new Error(`Report not found: ${reportId}`);
 
   const followUpCase = await client.followUpCase.findUnique({
-    where: { anchorReportId: ranked.reports[0].id },
+    where: { anchorReportId: ranked.anchorReportId },
   });
   if (!followUpCase) return 0;
 

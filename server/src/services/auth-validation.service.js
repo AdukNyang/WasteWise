@@ -29,6 +29,7 @@ const validatePhone = (phone) => {
     return null;
   if (typeof phone !== "string")
     return "Phone number must be text";
+  if (!phone.trim()) return null;
   if (!/^[+\d][\d\s()-]{5,24}$/.test(phone.trim()))
     return "A valid phone number is required";
   return null;
