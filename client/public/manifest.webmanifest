@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "WasteWise",
+  "short_name": "WasteWise",
+  "description": "Report local environmental issues and follow their progress.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#173c2c",
+  "theme_color": "#21543c",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

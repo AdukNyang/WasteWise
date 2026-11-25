@@ -41,8 +41,34 @@ const readSession = () => {
   }
 };
 
+const getAuthScreen = () => {
+  const requestedScreen = new URLSearchParams(window.location.search).get("auth");
+  return ["welcome", "login", "register"].includes(requestedScreen)
+    ? requestedScreen
+    : "landing";
+};
+
 function App() {
   const [session, setSession] = useState(readSession);
+  const [authScreen, setAuthScreen] = useState(getAuthScreen);
+
+  useEffect(() => {
+    const syncAuthScreen = () => setAuthScreen(getAuthScreen());
+    window.addEventListener("popstate", syncAuthScreen);
+    return () => window.removeEventListener("popstate", syncAuthScreen);
+  }, []);
+
+  const navigateAuth = useCallback((screen, replace = false) => {
+    const url = new URL(window.location.href);
+    if (screen === "landing") {
+      url.searchParams.delete("auth");
+    } else {
+      url.searchParams.set("auth", screen);
+    }
+    const updateHistory = replace ? "replaceState" : "pushState";
+    window.history[updateHistory]({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setAuthScreen(screen);
+  }, []);
 
   const handleAuthenticated = (value) => {
     localStorage.setItem("wastewise-session", JSON.stringify(value));
@@ -55,22 +81,61 @@ function App() {
       : "Are you sure you want to sign out?";
     if (!window.confirm(message)) return;
     localStorage.removeItem("wastewise-session");
+    navigateAuth("landing");
     setSession(null);
   };
 
-  if (!session) return <AuthScreen onAuthenticated={handleAuthenticated} />;
+  if (!session) {
+    if (authScreen === "landing") {
+      return <LandingPage onNavigate={navigateAuth} />;
+    }
+    const backScreen = authScreen === "welcome" ? "landing" : "welcome";
+    const backLabel = authScreen === "welcome" ? "Back to home" : "Back";
+    return (
+      <AuthScreen
+        key={authScreen}
+        screen={authScreen}
+        onAuthenticated={handleAuthenticated}
+        onBack={() => navigateAuth(backScreen)}
+        backLabel={backLabel}
+        onNavigate={navigateAuth}
+      />
+    );
+  }
   return <Dashboard key={session.user.id} session={session} onLogout={handleLogout} />;
 }
 
-function AuthScreen({ onAuthenticated }) {
-  const [mode, setMode] = useState("login");
+function LandingPage({ onNavigate }) {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => onNavigate("welcome", true), 1000);
+    return () => window.clearTimeout(timeout);
+  }, [onNavigate]);
+
+  return (
+    <main className="landing-page">
+      <div className="landing-logo" aria-label="WasteWise">
+        <span className="landing-logo-mark" aria-hidden="true">W</span>
+        <span>WasteWise</span>
+      </div>
+    </main>
+  );
+}
+
+function AuthScreen({ screen, onAuthenticated, onBack, backLabel, onNavigate }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const isRegister = mode === "register";
+  const isWelcome = screen === "welcome";
+  const isRegister = screen === "register";
+  const isAuthForm = screen === "login" || isRegister;
 
   const updateForm = (event) => {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  };
+
+  const switchScreen = (nextScreen) => {
+    setError("");
+    onNavigate(nextScreen);
   };
 
   const submit = async (event) => {
@@ -95,72 +160,88 @@ function AuthScreen({ onAuthenticated }) {
 
   return (
     <main className="auth-page">
-      <section className="auth-intro">
-        <div className="brand brand-light">
+      <header className="auth-header">
+        <div className="brand">
           <span className="brand-mark">W</span>
           <span>WasteWise</span>
         </div>
-        <div className="auth-intro-copy">
-          <p className="eyebrow">A cleaner community starts here.</p>
-          <h1>Small actions,<br />Visible change.</h1>
-          <p>Report local environmental issues, follow their progress, and help make sure they are resolved.</p>
-        </div>
-        <div className="auth-footnote">Community reporting platform for Kampala</div>
-      </section>
+        {screen !== "welcome" && (
+          <button type="button" className="text-button" onClick={onBack}>{backLabel}</button>
+        )}
+      </header>
 
       <section className="auth-panel">
-        <div className="auth-card">
-          <p className="eyebrow">{isRegister ? "Join the community" : "Welcome to WasteWise"}</p>
-          <h2>{isRegister ? "Create your account" : "Sign in to WasteWise"}</h2>
-          <p className="muted">{isRegister ? "Start reporting and tracking local environmental issues." : "Continue making a difference in your community."}</p>
+        {isWelcome && (
+          <div className="auth-content auth-content-welcome">
+            <div className="auth-intro-copy">
+              <h1>
+                Small Actions,<br />
+                <span className="auth-intro-heading-offset">Visible Change</span>
+              </h1>
+              <p>A cleaner community starts here.</p>
+              <button
+                type="button"
+                className="button button-primary auth-get-started"
+                onClick={() => switchScreen("register")}
+              >
+                Get Started
+              </button>
+            </div>
+          </div>
+        )}
 
-          {error && <Alert kind="error">{error}</Alert>}
-          <form className="form-stack" onSubmit={submit}>
-            {isRegister && (
-              <>
-                <Field label="Full name">
-                  <input name="name" value={form.name} onChange={updateForm} required minLength={2} maxLength={100} autoComplete="name" />
-                </Field>
-                <Field label="Phone number" hint="Optional">
-                  <input name="phone" value={form.phone} onChange={updateForm} maxLength={25} autoComplete="tel" />
-                </Field>
-              </>
-            )}
-            <Field label="Email">
-              <input type="email" name="email" value={form.email} onChange={updateForm} required maxLength={254} autoComplete="email" />
-            </Field>
-            <Field label="Password">
-              <input
-                type="password"
-                name="password"
-                value={form.password}
-                onChange={updateForm}
-                required
-                minLength={isRegister ? 8 : undefined}
-                maxLength={128}
-                autoComplete={isRegister ? "new-password" : "current-password"}
-              />
-            </Field>
-            <button className="button button-primary button-wide" type="submit" disabled={loading}>
-              {loading ? "Please wait..." : isRegister ? "Create account" : "Sign in"}
-            </button>
-          </form>
+        {isAuthForm && (
+          <div className="auth-content auth-content-form">
+            <div className="auth-card">
+              <p className="eyebrow">{isRegister ? "Join WasteWise" : "Welcome Back"}</p>
+              <h2>{isRegister ? "Create your account" : "Sign in to WasteWise"}</h2>
+              <p className="muted">{isRegister ? "Start reporting and tracking local environmental issues." : "Continue making a difference in your community."}</p>
 
-          <p className="auth-switch">
-            {isRegister ? "Already have an account?" : "New to WasteWise?"}{" "}
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                setError("");
-                setMode(isRegister ? "login" : "register");
-              }}
-            >
-              {isRegister ? "Sign in" : "Create an account"}
-            </button>
-          </p>
-          {isRegister && <p className="fine-print">Community accounts are created here. Staff accounts are managed by an administrator.</p>}
-        </div>
+              {error && <Alert kind="error">{error}</Alert>}
+              <form className="form-stack" onSubmit={submit}>
+                {isRegister && (
+                  <>
+                    <Field label="Full name">
+                      <input name="name" value={form.name} onChange={updateForm} required minLength={2} maxLength={100} autoComplete="name" />
+                    </Field>
+                    <Field label="Phone number" hint="Optional">
+                      <input name="phone" value={form.phone} onChange={updateForm} maxLength={25} autoComplete="tel" />
+                    </Field>
+                  </>
+                )}
+                <Field label="Email">
+                  <input type="email" name="email" value={form.email} onChange={updateForm} required maxLength={254} autoComplete="email" />
+                </Field>
+                <Field label="Password">
+                  <input
+                    type="password"
+                    name="password"
+                    value={form.password}
+                    onChange={updateForm}
+                    required
+                    minLength={isRegister ? 8 : undefined}
+                    maxLength={128}
+                    autoComplete={isRegister ? "new-password" : "current-password"}
+                  />
+                </Field>
+                <button className="button button-primary button-wide" type="submit" disabled={loading}>
+                  {loading ? "Please wait..." : isRegister ? "Create account" : "Sign in"}
+                </button>
+              </form>
+
+              <p className="auth-switch">
+                {isRegister ? "Already have an account?" : "New to WasteWise?"}{" "}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => switchScreen(isRegister ? "login" : "register")}
+                >
+                  {isRegister ? "Sign in" : "Create an account"}
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
       </section>
     </main>
   );
@@ -437,7 +518,11 @@ function NotificationCenter({ token, onNavigate }) {
                 {busy ? "Saving..." : pushSubscribed ? "Turn off" : "Turn on"}
               </button>
             </div>
-          ) : <p className="notification-hint">This browser does not support push notifications.</p>}
+          ) : (
+            <p className="notification-hint">
+              Push isn’t available in this browser session. On iPhone or iPad, use iOS 16.4 or newer and open WasteWise from the Home Screen. In-app notifications are still available.
+            </p>
+          )}
           <div className="notification-list">
             {notifications.length ? notifications.map((notification) => (
               <button
@@ -1098,7 +1183,7 @@ function WalletPage({ token, user }) {
   if (!wallet) return <div className="page-content">{error && <Alert kind="error">{error}</Alert>}</div>;
 
   return (
-    <div className="page-content">
+    <div className="page-content wallet-page">
       {error && <Alert kind="error">{error}</Alert>}
       {notice && <Alert kind="success" onDismiss={() => setNotice("")}>{notice}</Alert>}
       <section className="wallet-hero">
@@ -1196,8 +1281,18 @@ function CertificateModal({ userName, redeemedAt, onClose }) {
               In recognition of your contribution to protecting the environment and building a cleaner, healthier community.
             </p>
             <div className="certificate-footer">
-              <span><strong>WasteWise Community</strong><small>Issued {formatDate(redeemedAt)}</small></span>
-              <span className="certificate-seal" aria-hidden="true">WW</span>
+              <span className="certificate-issued"><strong>WasteWise Community</strong><small>Issued {formatDateOnly(redeemedAt)}</small></span>
+              <span className="certificate-signature">
+                <span className="certificate-signature-script" aria-hidden="true">WasteWise</span>
+                <span className="certificate-signature-line" aria-hidden="true" />
+                <strong>WasteWise Team</strong>
+                <small>Community Recognition</small>
+              </span>
+              <span className="certificate-seal" role="img" aria-label="WasteWise recognition badge">
+                <span className="certificate-seal-mark" aria-hidden="true">W</span>
+                <span className="certificate-seal-label" aria-hidden="true">WASTEWISE</span>
+                <span className="certificate-seal-detail" aria-hidden="true">RECOGNITION</span>
+              </span>
             </div>
           </div>
         </article>
@@ -1965,6 +2060,11 @@ function Loading() {
 function formatDate(value) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function formatDateOnly(value) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
 }
 
 function statusLabel(status = "UNKNOWN") {
