@@ -142,7 +142,7 @@ VAPID_PUBLIC_KEY=""
 VAPID_PRIVATE_KEY=""
 ```
 
-Browser push is optional. Generate a VAPID key pair with `npx web-push generate-vapid-keys`, then configure the public and private keys as server environment variables. Keep the private key secret. Browser push requires HTTPS in production; in-app notifications work without VAPID keys.
+Browser push is optional. Generate a VAPID key pair with `npx web-push generate-vapid-keys`, then configure the public and private keys as server environment variables. Keep the private key secret. Browser push requires HTTPS in production; in-app notifications work without VAPID keys. On iPhone or iPad, use iOS 16.4 or newer and open the installed Home Screen app to enable browser push; it is unavailable in an ordinary Safari tab.
 
 ### 4. Set up the database
 ```bash
@@ -151,6 +151,42 @@ npx prisma generate
 ```
 
 After schema changes, stop the running server before regenerating Prisma Client on Windows to avoid a locked engine file.
+
+### Provision administrator and stakeholder accounts
+Public registration creates community-user accounts only. To create one administrator or responsible stakeholder account, run this from `server`:
+```bash
+npm run provision:staff -- --confirm-remote-database
+```
+
+Set `PROVISION_DATABASE_URL` explicitly to the intended database first; this command does not load `server/.env`. In PowerShell, enter the URL without echoing it, then run the command:
+```powershell
+$secureUrl = Read-Host -Prompt "Provisioning database URL" -AsSecureString
+$pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureUrl)
+try {
+  $env:PROVISION_DATABASE_URL = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+  npm run provision:staff -- --confirm-remote-database
+}
+finally {
+  Remove-Item Env:PROVISION_DATABASE_URL -ErrorAction SilentlyContinue
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+  $secureUrl.Dispose()
+}
+```
+
+In Git Bash (including MINGW64), use `read -s` to enter the URL without echoing it. This runs the command twice, once for each role:
+```bash
+(
+  read -rsp "Production database URL: " PROVISION_DATABASE_URL
+  printf '\n'
+  export PROVISION_DATABASE_URL
+  npm run provision:staff -- --confirm-remote-database
+  if [ "$?" -eq 0 ]; then
+    npm run provision:staff -- --confirm-remote-database
+  fi
+)
+```
+
+The command displays the database host and name, requires typing that exact target, prompts for the role and account details, and hides both password entries. It stores a password hash and refuses remote databases unless `--confirm-remote-database` is provided. Run it once per staff account, verifying that the displayed target is the database used by the deployed API. Never share or commit the database URL or passwords.
 
 ### 5. Start the server
 ```bash
